@@ -43,6 +43,19 @@ jobs:
       cache-dependency-path: fixtures/python-app/pyproject.toml
       postgres-image: postgres:16-alpine
 
+  java-ci:
+    uses: ./.github/workflows/java-ci.yml
+    with:
+      working-directory: fixtures/java-app
+      coverage-xml-path: target/site/jacoco/jacoco.xml
+      coverage-artifact-name: java-coverage-xml
+
+  java-ci-postgres:
+    uses: ./.github/workflows/java-ci.yml
+    with:
+      working-directory: fixtures/java-app
+      postgres-image: postgres:16-alpine
+
   frontend-ci:
     uses: ./.github/workflows/frontend-ci.yml
     with:

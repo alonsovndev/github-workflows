@@ -12,6 +12,7 @@ Central repository of reusable GitHub Actions workflows (`on: workflow_call`) fo
 | --- | --- |
 | Lint workflows | `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.7` |
 | Fixture checks (Python) | `cd fixtures/python-app && pip install -e .[dev] && make ci` |
+| Fixture checks (Java) | `cd fixtures/java-app && make ci` |
 | Fixture checks (Node) | `cd fixtures/node-app && make ci` |
 | Terraform fixtures and OIDC example | `cd fixtures/terraform && terraform fmt -check && terraform init -backend=false && terraform validate` (same in `docs/oidc/terraform`; never run `plan` or `apply` there, the AWS provider would use local credentials) |
 

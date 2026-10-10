@@ -22,15 +22,18 @@ A called workflow cannot hold permissions its caller does not grant. `docker-pus
 
 | Workflow | Input | Default | Note |
 | --- | --- | --- | --- |
-| `python-ci`, `frontend-ci` | `ci-command` | `make ci` | See [the contract](contract.md) |
+| `python-ci`, `java-ci`, `frontend-ci` | `ci-command` | `make ci` | See [the contract](contract.md) |
 | `python-ci` | `postgres-image` | empty | Adds a PostgreSQL service and exports `DATABASE_URL` |
+| `java-ci` | `postgres-image` | empty | Adds a PostgreSQL service and exports `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
+| `java-ci` | `java-version`, `distribution` | `17`, `temurin` | JDK installed by `actions/setup-java`; Maven is the one preinstalled on the runner, so repositories using `./mvnw` get the pinned version |
+| `java-ci` | `cache-dependency-path` | `**/pom.xml` | Keys the Maven cache; the glob must match a file |
 | `python-ci` | `cache-dependency-path` | `**/pyproject.toml` | Set it when the project is in a subdirectory |
 | `frontend-ci` | `e2e` | `true` | Runs Playwright (chromium) in its own job |
 | `docker-push` | outputs | `image-uri`, `digest` | `image-uri` is digest-pinned; pass it to `deploy-ecs` |
 | `docker-build`, `docker-push` | `target` | empty | Dockerfile stage to build (for example `lambda`); empty builds the last stage |
 | `docker-push` | `version-tag` | empty | Extra tag (letters, digits, `.`, `_`, `-`). The `sha-` tag is always pushed, so re-running a tag push fails if the ECR repository has immutable tags |
 | `terraform-apply` | `allow-destroy` | `false` | Fails the apply when the plan deletes or replaces anything |
-| `python-ci` | `coverage-artifact-name` | `coverage-xml` | Set it when the workflow is called more than once in a run |
+| `python-ci`, `java-ci` | `coverage-artifact-name` | `coverage-xml` | Set it when the workflow is called more than once in a run |
 | `terraform-*` | `backend-config` | empty | `key=value` lines passed to `terraform init -backend-config` |
 | `terraform-apply`, `deploy-ecs`, `docker-push` | `environment` | required | Configure required reviewers on the GitHub environment. The OIDC role trusts this environment's subject, so tag and branch pushes need no wildcard trust |
 | `terraform-plan`, `terraform-apply` | `artifact-name`, `artifact-path` | empty | Downloads an artifact uploaded earlier in the calling workflow (for example a built site for the Cloudflare static-assets module) into `working-directory/artifact-path` before init. `artifact-path` is required with `artifact-name` and must not contain `..`. In `terraform-apply` the artifact comes from a job that ran before the environment approval, so reviewers approve a build they have not seen |

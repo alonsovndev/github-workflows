@@ -8,8 +8,8 @@ variable "roles" {
   description = "IAM roles GitHub Actions may assume, keyed by role name."
   type = map(object({
     # Full OIDC subject claims, for example "repo:owner/repo:pull_request",
-    # "repo:owner/repo:environment:prod", "repo:owner/repo:ref:refs/heads/main",
-    # or "repo:owner/repo:ref:refs/tags/v*". The owner and repository must be literal.
+    # "repo:owner/repo:environment:prod" or "repo:owner/repo:ref:refs/heads/main". Prefer the
+    # environment form for tag-triggered jobs. The owner and repository must be literal.
     subjects            = list(string)
     managed_policy_arns = optional(list(string), [])
     inline_policy_json  = optional(string)

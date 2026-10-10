@@ -9,11 +9,7 @@ roles = {
     managed_policy_arns = [] # attach the narrowest policy that covers what the stack manages
   }
   "example-ecr-push" = {
-    subjects = [
-      "repo:alonsovndev/example-api:ref:refs/heads/main",
-      "repo:alonsovndev/example-api:ref:refs/heads/dev",
-      "repo:alonsovndev/example-api:ref:refs/tags/v*",
-    ]
+    subjects           = ["repo:alonsovndev/example-api:environment:prod"]
     inline_policy_json = <<-JSON
       {
         "Version": "2012-10-17",

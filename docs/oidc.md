@@ -12,12 +12,12 @@ Use one role per purpose, each trusting only the subject that purpose needs.
 | --- | --- | --- | --- |
 | plan | `terraform-plan` | Read-only plus state read | `repo:<owner>/<repo>:pull_request` |
 | apply | `terraform-apply` | What the stack manages, and the state lock | `repo:<owner>/<repo>:environment:<env>` |
-| ecr-push | `docker-push` | Push to named ECR repositories | `repo:<owner>/<repo>:ref:refs/heads/main`, `...:refs/heads/dev`, `...:refs/tags/v*` |
+| ecr-push | `docker-push` | Push to named ECR repositories | `repo:<owner>/<repo>:environment:<env>` |
 | ecs-deploy | `deploy-ecs` | Register task definitions, update the service, `iam:PassRole` on its task roles | `repo:<owner>/<repo>:environment:<env>` |
 
 Why subjects matter:
 
-- A job that declares `environment:` gets the subject `repo:<owner>/<repo>:environment:<env>` instead of a ref subject. Trust policies for apply and deploy must therefore use the environment form, and the environment's required reviewers become the approval gate.
+- A job that declares `environment:` gets the subject `repo:<owner>/<repo>:environment:<env>` instead of a ref subject. Trust policies for apply, deploy, and image push must therefore use the environment form, and the environment's required reviewers become the approval gate. One environment entry also covers every branch and tag push, which matters because the Phase 3 `aws/github-oidc` module accepts only exact subjects. The subject carries no ref, so restrict the environment's deployment branches or tags and require reviewers on it; without that, any branch workflow that declares the environment can assume the role.
 - Pull request runs get `repo:<owner>/<repo>:pull_request`. Only the read-only plan role should trust it.
 - Pull requests from forks get no OIDC token, so plan jobs do not run for them.
 

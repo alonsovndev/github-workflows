@@ -7,6 +7,7 @@ Reusable GitHub Actions workflows for the engineering platform. Repositories cal
 | Workflow | Purpose |
 | --- | --- |
 | `python-ci.yml` | Install, run `make ci` (lint, types, tests, 80% coverage gate), optional PostgreSQL service |
+| `java-ci.yml` | Set up JDK, run `make ci` (the repository defines lint and tests; 80% coverage gate), optional PostgreSQL service |
 | `frontend-ci.yml` | `npm ci`, `make ci`, optional Playwright job |
 | `pr-title.yml` | Conventional Commits check on the pull request title |
 | `docker-build.yml` | Build an image with no AWS access (safe on pull requests) |
@@ -34,7 +35,7 @@ Copy a starting point from [`examples/callers`](examples/callers). Details: [usa
 
 ```text
 .github/workflows/   reusable workflows, plus ci.yml that tests them on fixtures
-fixtures/            minimal Python, Node, Terraform, and Docker projects used by ci.yml
+fixtures/            minimal Python, Java, Node, Terraform, and Docker projects used by ci.yml
 examples/callers/    caller workflows to copy
 docs/                usage, contract, OIDC design, example Terraform
 ```

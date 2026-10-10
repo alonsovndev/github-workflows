@@ -7,11 +7,12 @@ The handbook requires every repository to expose the same entry points, and `mak
 | Stack | Must include |
 | --- | --- |
 | Python | Ruff check and format check, type check, pytest with the coverage gate (`fail_under = 80` in `pyproject.toml` or `--cov-fail-under=80`) |
+| Java (Maven) | Format check and lint as the repository defines them, tests, and the JaCoCo gate (`LINE` `COVEREDRATIO` minimum `0.80` in `pom.xml`, bound to `verify`) |
 | Frontend | Prettier check, ESLint with zero warnings, `tsc --noEmit`, `vitest run --coverage` with `coverage.thresholds.lines: 80`, build |
 
 The gate lives in the repository's own configuration, so lowering it is a visible, reviewable change that needs an ADR update. These workflows do not read or override the threshold.
 
-Working examples: `fixtures/python-app` and `fixtures/node-app` here, and `template-react-vite`.
+Working examples: `fixtures/python-app`, `fixtures/java-app`, and `fixtures/node-app` here, and `template-react-vite` and `template-api-java`.
 
 ## Alternatives
 
@@ -23,4 +24,4 @@ See [usage](usage.md#preconditions) for the files each workflow expects (lockfil
 
 ## Install step
 
-`python-ci` runs `install-command` (default `pip install -e .[dev]`) before the checks. `frontend-ci` runs `npm ci --ignore-scripts`, so Husky hooks are not installed on CI.
+`java-ci` has no install step: Maven resolves dependencies during `ci-command`. `python-ci` runs `install-command` (default `pip install -e .[dev]`) before the checks. `frontend-ci` runs `npm ci --ignore-scripts`, so Husky hooks are not installed on CI.

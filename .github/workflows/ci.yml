@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint workflows and caller examples
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.7 -color \
+            .github/workflows/*.yml examples/callers/*.yml
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/pr-title.yml
+
+  python-ci:
+    uses: ./.github/workflows/python-ci.yml
+    with:
+      working-directory: fixtures/python-app
+      cache-dependency-path: fixtures/python-app/pyproject.toml
+      coverage-xml-path: coverage.xml
+
+  python-ci-postgres:
+    uses: ./.github/workflows/python-ci.yml
+    with:
+      working-directory: fixtures/python-app
+      cache-dependency-path: fixtures/python-app/pyproject.toml
+      postgres-image: postgres:16-alpine
+
+  frontend-ci:
+    uses: ./.github/workflows/frontend-ci.yml
+    with:
+      working-directory: fixtures/node-app
+      e2e: false
+
+  terraform-validate:
+    uses: ./.github/workflows/terraform-validate.yml
+    with:
+      working-directory: fixtures/terraform
+
+  terraform-validate-oidc-example:
+    uses: ./.github/workflows/terraform-validate.yml
+    with:
+      working-directory: docs/oidc/terraform
+
+  docker-build:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      context: fixtures/docker

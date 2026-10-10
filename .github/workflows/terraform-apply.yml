@@ -1,0 +1,97 @@
+name: Terraform apply
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment that gates the apply (configure required reviewers on it).
+        type: string
+        required: true
+      working-directory:
+        type: string
+        default: .
+      terraform-version:
+        type: string
+        default: "1.12.0"
+      aws-region:
+        type: string
+        required: true
+      role-arn:
+        description: Apply IAM role assumed through GitHub OIDC (trusts the environment subject).
+        type: string
+        required: true
+      backend-config:
+        description: Newline-separated key=value pairs passed to `terraform init -backend-config`.
+        type: string
+        default: ""
+      var-file:
+        type: string
+        default: ""
+      allow-destroy:
+        description: Permit plans that delete or replace resources. Off by default because approval happens before the plan is computed.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    # Applies must finish; cancelling mid-apply can leave state locked or half-written. GitHub keeps
+    # only one pending run per group, so a newer queued apply replaces an older queued one.
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}-${{ inputs.working-directory }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Init
+        env:
+          BACKEND_CONFIG: ${{ inputs.backend-config }}
+        run: |
+          args=()
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then args+=("-backend-config=$line"); fi
+          done <<< "$BACKEND_CONFIG"
+          terraform init -input=false "${args[@]}"
+
+      # Environment approval happens before this job starts, so reviewers approve without seeing
+      # this plan; they review the pull request plan instead. Destructive plans are therefore blocked
+      # unless allow-destroy is set. The plan file stays on the runner and is never uploaded.
+      - name: Plan
+        env:
+          VAR_FILE: ${{ inputs.var-file }}
+          ALLOW_DESTROY: ${{ inputs.allow-destroy }}
+        run: |
+          args=()
+          if [ -n "$VAR_FILE" ]; then args+=("-var-file=$VAR_FILE"); fi
+          terraform plan -input=false -no-color -lock-timeout=5m -out="$RUNNER_TEMP/tfplan" "${args[@]}"
+          terraform show -json "$RUNNER_TEMP/tfplan" > "$RUNNER_TEMP/plan.json"
+          destructive=$(jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' "$RUNNER_TEMP/plan.json")
+          if [ "$destructive" -gt 0 ] && [ "$ALLOW_DESTROY" != "true" ]; then
+            echo "Plan deletes or replaces $destructive resource(s). Re-run with allow-destroy: true if intended." >&2
+            jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "- \(.change.actions | join("/")) \(.address)"' "$RUNNER_TEMP/plan.json" >&2
+            exit 1
+          fi
+
+      - name: Apply
+        run: terraform apply -input=false -no-color -lock-timeout=5m "$RUNNER_TEMP/tfplan"

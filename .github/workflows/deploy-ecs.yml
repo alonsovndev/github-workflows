@@ -1,0 +1,91 @@
+name: Deploy to ECS
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment that gates the deploy.
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      role-arn:
+        description: Deploy IAM role assumed through GitHub OIDC (trusts the environment subject).
+        type: string
+        required: true
+      cluster:
+        type: string
+        required: true
+      service:
+        type: string
+        required: true
+      task-definition-family:
+        description: Family of the existing task definition to copy and update.
+        type: string
+        required: true
+      container-name:
+        description: Container in the task definition whose image is replaced.
+        type: string
+        required: true
+      image-uri:
+        description: Image to deploy, ideally the digest-pinned output of docker-build.
+        type: string
+        required: true
+      wait-minutes:
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.service }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-ecs-${{ inputs.environment }}-${{ inputs.cluster }}-${{ inputs.service }}
+      cancel-in-progress: false
+    steps:
+      - name: Check image URI
+        env:
+          IMAGE_URI: ${{ inputs.image-uri }}
+        run: |
+          if [ -z "$IMAGE_URI" ]; then
+            echo "image-uri is empty. Pass the image-uri output of docker-push." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Fetch current task definition
+        env:
+          FAMILY: ${{ inputs.task-definition-family }}
+        run: |
+          aws ecs describe-task-definition --task-definition "$FAMILY" \
+            --query taskDefinition > "$RUNNER_TEMP/task-definition.json"
+
+      - name: Render task definition with the new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ runner.temp }}/task-definition.json
+          container-name: ${{ inputs.container-name }}
+          image: ${{ inputs.image-uri }}
+
+      - name: Deploy and wait for stability
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ inputs.cluster }}
+          service: ${{ inputs.service }}
+          wait-for-service-stability: true
+          wait-for-minutes: ${{ inputs.wait-minutes }}

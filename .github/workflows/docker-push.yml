@@ -1,0 +1,99 @@
+name: Docker push
+
+on:
+  workflow_call:
+    inputs:
+      ecr-repository:
+        description: ECR repository name (not the full URI).
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      role-arn:
+        description: IAM role to assume through GitHub OIDC (trusts the pushing ref or environment).
+        type: string
+        required: true
+      context:
+        type: string
+        default: .
+      dockerfile:
+        type: string
+        default: Dockerfile
+      version-tag:
+        description: Extra tag to publish, for example v1.2.3. The commit SHA tag is always published.
+        type: string
+        default: ""
+    outputs:
+      image-uri:
+        description: Digest-pinned image URI.
+        value: ${{ jobs.build.outputs.image-uri }}
+      digest:
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image-uri: ${{ steps.image.outputs.image-uri }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve tags
+        id: tags
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ inputs.ecr-repository }}
+          VERSION_TAG: ${{ inputs.version-tag }}
+        run: |
+          if [ -n "$VERSION_TAG" ] && ! printf '%s\n' "$VERSION_TAG" | grep -qE '^[A-Za-z0-9._-]+$'; then
+            echo "version-tag may contain only letters, digits, dot, underscore, and dash." >&2
+            exit 1
+          fi
+          base="$REGISTRY/$REPOSITORY"
+          {
+            echo "list<<TAGS_EOF"
+            echo "$base:sha-${GITHUB_SHA::12}"
+            if [ -n "$VERSION_TAG" ]; then echo "$base:$VERSION_TAG"; fi
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output image URI
+        id: image
+        env:
+          BASE: ${{ steps.tags.outputs.base }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "image-uri=$BASE@$DIGEST" >> "$GITHUB_OUTPUT"

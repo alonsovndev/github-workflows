@@ -1,0 +1,92 @@
+name: Terraform plan
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: .
+      terraform-version:
+        type: string
+        default: "1.12.0"
+      aws-region:
+        type: string
+        required: true
+      role-arn:
+        description: Read-only IAM role assumed through GitHub OIDC (trusts the pull_request subject).
+        type: string
+        required: true
+      backend-config:
+        description: Newline-separated key=value pairs passed to `terraform init -backend-config`.
+        type: string
+        default: ""
+      var-file:
+        description: Optional non-secret .tfvars file, relative to working-directory.
+        type: string
+        default: ""
+    outputs:
+      has-changes:
+        description: "true when the plan contains changes."
+        value: ${{ jobs.plan.outputs.has-changes }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      has-changes: ${{ steps.plan.outputs.has-changes }}
+    concurrency:
+      group: terraform-plan-${{ github.ref }}-${{ inputs.working-directory }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Init
+        env:
+          BACKEND_CONFIG: ${{ inputs.backend-config }}
+        run: |
+          args=()
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then args+=("-backend-config=$line"); fi
+          done <<< "$BACKEND_CONFIG"
+          terraform init -input=false "${args[@]}"
+
+      - name: Plan
+        id: plan
+        env:
+          VAR_FILE: ${{ inputs.var-file }}
+          WORKDIR: ${{ inputs.working-directory }}
+        run: |
+          args=()
+          if [ -n "$VAR_FILE" ]; then args+=("-var-file=$VAR_FILE"); fi
+          # -lock=false: the plan role is read-only and cannot write the state lock.
+          terraform plan -input=false -no-color -lock=false -out="$RUNNER_TEMP/tfplan" "${args[@]}"
+          terraform show -json "$RUNNER_TEMP/tfplan" > "$RUNNER_TEMP/plan.json"
+          changes=$(jq '[.resource_changes[]? | select(.change.actions != ["no-op"] and .change.actions != ["read"])] | length' "$RUNNER_TEMP/plan.json")
+          echo "has-changes=$([ "$changes" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Terraform plan: \`$WORKDIR\`"
+            echo
+            echo "Resource changes: **$changes**. Values are not shown; the plan file is not uploaded because state can contain secrets."
+            echo
+            jq -r '.resource_changes[]? | select(.change.actions != ["no-op"] and .change.actions != ["read"]) | "- `\(.change.actions | join("/"))` \(.address)"' "$RUNNER_TEMP/plan.json"
+          } >> "$GITHUB_STEP_SUMMARY"

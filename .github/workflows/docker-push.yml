@@ -3,6 +3,10 @@ name: Docker push
 on:
   workflow_call:
     inputs:
+      environment:
+        description: GitHub environment the push job runs in. The ECR push role trusts this environment's OIDC subject, so tag and branch pushes need no wildcard trust.
+        type: string
+        required: true
       ecr-repository:
         description: ECR repository name (not the full URI).
         type: string
@@ -11,7 +15,7 @@ on:
         type: string
         required: true
       role-arn:
-        description: IAM role to assume through GitHub OIDC (trusts the pushing ref or environment).
+        description: IAM role to assume through GitHub OIDC (trusts the environment subject).
         type: string
         required: true
       context:
@@ -20,6 +24,10 @@ on:
       dockerfile:
         type: string
         default: Dockerfile
+      target:
+        description: Dockerfile build stage to build (for example lambda). Empty builds the last stage.
+        type: string
+        default: ""
       version-tag:
         description: Extra tag to publish, for example v1.2.3. The commit SHA tag is always published.
         type: string
@@ -38,6 +46,7 @@ jobs:
   build:
     name: Build and push
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -85,6 +94,7 @@ jobs:
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
           push: true
           tags: ${{ steps.tags.outputs.list }}
           provenance: false

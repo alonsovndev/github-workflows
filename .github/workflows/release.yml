@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      main-branch:
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same checks as the validate-tag job callers should run before building (see docs/usage.md).
+      - name: Validate tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+          MAIN_BRANCH: ${{ inputs.main-branch }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "Call this workflow from a tag push." >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag $TAG must look like vX.Y.Z." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin "$MAIN_BRANCH"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$MAIN_BRANCH"; then
+            echo "Tag $TAG is not on $MAIN_BRANCH. Tag only $MAIN_BRANCH." >&2
+            exit 1
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
+          gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"

@@ -1,0 +1,48 @@
+# Copy to .github/workflows/deploy.yml in a service repository.
+# On a vX.Y.Z tag: build and push the image, deploy it to ECS, then create the GitHub release.
+name: Deploy
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-tag:
+    uses: alonsovndev/github-workflows/.github/workflows/validate-tag.yml@v1
+
+  build:
+    needs: validate-tag
+    uses: alonsovndev/github-workflows/.github/workflows/docker-push.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      ecr-repository: example-api
+      aws-region: us-east-1
+      role-arn: arn:aws:iam::111111111111:role/example-ecr-push
+      version-tag: ${{ github.ref_name }}
+
+  deploy:
+    needs: build
+    uses: alonsovndev/github-workflows/.github/workflows/deploy-ecs.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: prod
+      aws-region: us-east-1
+      role-arn: arn:aws:iam::111111111111:role/example-ecs-deploy
+      cluster: example-cluster
+      service: example-api
+      task-definition-family: example-api
+      container-name: api
+      image-uri: ${{ needs.build.outputs.image-uri }}
+
+  release:
+    needs: deploy
+    uses: alonsovndev/github-workflows/.github/workflows/release.yml@v1
+    permissions:
+      contents: write

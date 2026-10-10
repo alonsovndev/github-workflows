@@ -1,0 +1,51 @@
+# Copy to .github/workflows/terraform.yml in an infrastructure repository.
+# Replace the role ARNs, region, and backend values. The roles come from docs/oidc.md.
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths: ["**.tf", "**.tfvars", ".github/workflows/terraform.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    uses: alonsovndev/github-workflows/.github/workflows/terraform-validate.yml@v1
+    with:
+      working-directory: envs/prod
+
+  plan:
+    if: github.event_name == 'pull_request'
+    needs: validate
+    uses: alonsovndev/github-workflows/.github/workflows/terraform-plan.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      working-directory: envs/prod
+      aws-region: us-east-1
+      role-arn: arn:aws:iam::111111111111:role/example-tf-plan
+      backend-config: |
+        bucket=example-tfstate
+        key=prod/terraform.tfstate
+        region=us-east-1
+
+  apply:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    uses: alonsovndev/github-workflows/.github/workflows/terraform-apply.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: prod
+      working-directory: envs/prod
+      aws-region: us-east-1
+      role-arn: arn:aws:iam::111111111111:role/example-tf-apply
+      backend-config: |
+        bucket=example-tfstate
+        key=prod/terraform.tfstate
+        region=us-east-1

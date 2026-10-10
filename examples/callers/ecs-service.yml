@@ -20,6 +20,7 @@ jobs:
       contents: read
       id-token: write
     with:
+      environment: prod
       ecr-repository: example-api
       aws-region: us-east-1
       role-arn: arn:aws:iam::111111111111:role/example-ecr-push

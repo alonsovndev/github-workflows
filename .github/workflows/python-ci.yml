@@ -1,0 +1,116 @@
+name: Python CI
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.12"
+      working-directory:
+        description: Directory containing pyproject.toml.
+        type: string
+        default: .
+      install-command:
+        type: string
+        default: pip install -e .[dev]
+      ci-command:
+        description: Command that runs every check, including the coverage gate. The handbook contract is `make ci`.
+        type: string
+        default: make ci
+      cache-dependency-path:
+        description: Glob of files that key the pip cache.
+        type: string
+        default: "**/pyproject.toml"
+      postgres-image:
+        description: Postgres image for a service container (for example postgres:16-alpine). Empty means no database. The command receives DATABASE_URL.
+        type: string
+        default: ""
+      coverage-xml-path:
+        description: Path to a coverage XML report to upload as an artifact. Empty skips the upload.
+        type: string
+        default: ""
+      coverage-artifact-name:
+        description: Artifact name. Set it when the workflow is called more than once in a run.
+        type: string
+        default: coverage-xml
+
+permissions:
+  contents: read
+
+# The two jobs repeat their steps on purpose: a local composite action would resolve against the
+# caller's repository, and a service container cannot be enabled conditionally within one job.
+jobs:
+  verify:
+    name: Verify
+    if: inputs.postgres-image == ''
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+      - name: Install
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: bash -c "$INSTALL_COMMAND"
+      - name: Run checks
+        env:
+          CI_COMMAND: ${{ inputs.ci-command }}
+        run: bash -c "$CI_COMMAND"
+      - name: Upload coverage report
+        if: ${{ !cancelled() && inputs.coverage-xml-path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.coverage-xml-path }}
+          if-no-files-found: warn
+
+  verify-postgres:
+    name: Verify (with PostgreSQL)
+    if: inputs.postgres-image != ''
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres-image }}
+        env:
+          # Throwaway service container, reachable only from this job.
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+      - name: Install
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: bash -c "$INSTALL_COMMAND"
+      - name: Run checks
+        env:
+          CI_COMMAND: ${{ inputs.ci-command }}
+        run: bash -c "$CI_COMMAND"
+      - name: Upload coverage report
+        if: ${{ !cancelled() && inputs.coverage-xml-path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.coverage-xml-path }}
+          if-no-files-found: warn

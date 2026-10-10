@@ -1,0 +1,71 @@
+name: Frontend CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory containing package.json.
+        type: string
+        default: .
+      node-version-file:
+        description: Node version file, relative to working-directory.
+        type: string
+        default: .nvmrc
+      ci-command:
+        description: Command that runs every check, including the coverage gate. The handbook contract is `make ci`.
+        type: string
+        default: make ci
+      e2e:
+        description: Run Playwright (chromium) as a separate job.
+        type: boolean
+        default: true
+      e2e-command:
+        type: string
+        default: npm run test:e2e
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ inputs.working-directory }}/${{ inputs.node-version-file }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Run checks
+        env:
+          CI_COMMAND: ${{ inputs.ci-command }}
+        run: bash -c "$CI_COMMAND"
+
+  e2e:
+    name: End-to-end
+    if: inputs.e2e
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ${{ inputs.working-directory }}/${{ inputs.node-version-file }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - name: Install
+        run: npm ci --ignore-scripts
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        env:
+          E2E_COMMAND: ${{ inputs.e2e-command }}
+        run: bash -c "$E2E_COMMAND"
